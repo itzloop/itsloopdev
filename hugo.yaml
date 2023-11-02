@@ -1,0 +1,27 @@
+baseURL: https://example.org/
+languageCode: en-us
+title: Sina's Blog
+theme: PaperMod
+params:
+    profileMode:
+        enabled: true
+        # title: "Sina's Blog" # optional default will be site title
+        subtitle: "I mostly write about tech."
+        imageUrl: "among-us-cyan.png" # optional
+        imageTitle: "Among Us White" # optional
+        imageWidth: 320 # custom size
+        imageHeight: 320 # custom size
+        buttons:
+          - name: Posts
+            url: "/posts"
+
+    socialIcons: # optional
+      - name: "email"
+        url: "mailto:me@itsloop.dev"
+      - name: "github"
+        url: "https://github.com/itzloop"
+      - name: "linkedin"
+        url: "https://linkedin.com/in/sina-shabaniku"
+      - name: "cv"
+        title: "Resume"
+        url: "https://github.com/itzloop/resume/releases/download/v2.0/main.pdf"
