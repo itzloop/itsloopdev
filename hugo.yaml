@@ -1,4 +1,5 @@
 baseURL: https://itzloop.github.io/itsloopdev/
+hugo-version: '0.99.1'
 languageCode: en-us
 title: Sina's Blog
 theme: PaperMod
