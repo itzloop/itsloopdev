@@ -5,10 +5,13 @@
     <loc>https://example.org/posts/my-first-post/</loc>
     <lastmod>2023-11-02T14:28:47+03:30</lastmod>
   </url><url>
-    <loc>https://example.org/</loc>
+    <loc>https://example.org/posts/my-second-post/</loc>
     <lastmod>2023-11-02T14:28:47+03:30</lastmod>
   </url><url>
     <loc>https://example.org/posts/</loc>
+    <lastmod>2023-11-02T14:28:47+03:30</lastmod>
+  </url><url>
+    <loc>https://example.org/</loc>
     <lastmod>2023-11-02T14:28:47+03:30</lastmod>
   </url><url>
     <loc>https://example.org/categories/</loc>
