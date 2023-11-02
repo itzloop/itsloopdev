@@ -1,5 +1,4 @@
 baseURL: https://itzloop.github.io/itsloopdev/
-hugo-version: '0.99.1'
 languageCode: en-us
 title: Sina's Blog
 theme: PaperMod
@@ -14,7 +13,7 @@ params:
         imageHeight: 320 # custom size
         buttons:
           - name: Posts
-            url: "/posts"
+            url: "/itsloopdev/posts"
 
     socialIcons: # optional
       - name: "email"
