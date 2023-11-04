@@ -2,18 +2,54 @@ baseURL: https://itzloop.github.io/itsloopdev/
 languageCode: en-us
 title: Sina's Blog
 theme: PaperMod
+menu:
+  main:
+  - name: Home
+    pageRef: /
+    weight: 10
+  - name: Posts
+    pageRef: /posts
+    weight: 20
+  - name: Archives
+    pageRef: /archives
+    weight: 30
+  - name: Tags
+    pageRef: /tags
+    weight: 40
+  - name: Search
+    pageRef: /search
+    weight: 50
+
+outputs:
+  home:
+    - HTML
+    - RSS
+    - JSON # is necessary
 params:
+    defaultTheme: auto
+    # disableThemeToggle: true
+    # disableSpecial1stPost: true
+    displayFullLangName: true
+    ShowRssButtonInSectionTermList: true
+    ShowToc: true
+    # comments: false
+    images: ["papermod-cover.png"]
+    ShowPostNavLinks: true
+    ShowReadingTime: true
+    ShowCodeCopyButtons: true
+    ShowShareButtons: true
+    ShowBreadCrumbs: true
     profileMode:
+      enabled: true
+      # title: "Sina's Blog" # optional default will be site title
+      subtitle: "I mostly write about tech."
+      imageUrl: "among-us-cyan.png" # optional
+      imageTitle: "Among Us White" # optional
+      imageWidth: 128 # custom size
+      imageHeight: 128 # custom size
+      recentPosts:
         enabled: true
-        # title: "Sina's Blog" # optional default will be site title
-        subtitle: "I mostly write about tech."
-        imageUrl: "among-us-cyan.png" # optional
-        imageTitle: "Among Us White" # optional
-        imageWidth: 320 # custom size
-        imageHeight: 320 # custom size
-        buttons:
-          - name: Posts
-            url: "/itsloopdev/posts"
+        count: 2
 
     socialIcons: # optional
       - name: "email"
