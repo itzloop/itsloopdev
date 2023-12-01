@@ -1,6 +1,16 @@
 ---
 title: 'The Ultimate Guide to Graceful Applications in Golang'
 date: 2023-11-17T22:35:05+03:30
+tags:
+- Golang
+- Development
+- Technical
+keywords:
+- Golang
+- Development
+- Technical
+- WaitGroups
+- errgroup
 draft: true
 ---
 
@@ -49,7 +59,7 @@ In Go (Golang), signal handling involves using the `os/signal` package to captur
 The `os/signal` package provides a way to intercept signals sent to the program and perform custom actions 
 in response. Here's a basic overview of how signal handling works in Go:
 
-```golang
+```golang {linenos=inline,anchorlinenos=true,lineanchors="signal-handling-in-go"}
 package main
 
 import (
@@ -86,7 +96,7 @@ This is a simple example that simulates an application with a very useful functi
 This application logs `doing stuff...`  to infinity and beyond until it receives an interrupt signal.
 It also has a clean-up function which is required when your program is doing something this important.
 
-```golang
+```golang {linenos=inline,anchorlinenos=true,lineanchors="basic-example"}
 package main
 
 import (
@@ -140,7 +150,7 @@ A done channel is a simple channel used to signal that a goroutine has finished 
 
 1. Firstly, we modify the application to accept a done channel:
 
-```golang{hl_lines=[1]}
+```golang{hl_lines=[1],linenos=inline,anchorlinenos=true,lineanchors="done-channel-function-modification"}
 func runApplication(done <-chan struct{}) {
 	// application logic
 }
@@ -150,7 +160,7 @@ It's a good practice to pass the channel as read-only (`<-chan`). The rule of th
 
 2. Then we watch the channel and terminate the application when the channel gets closed.
 
-```golang {hl_lines=["3-7"]}
+```golang {hl_lines=["3-7"],linenos=inline,anchorlinenos=true,lineanchors="done-channel-application-loop"}
 for {
 	select {
 	case _, ok := <-done:
@@ -169,7 +179,7 @@ Reads from a closed channel will result in `zero-value, false` therefore `ok` wi
 
 3. Now in `main()` we create the channel and pass it to the application. Then when a signal is received, we close the channel.
 
-```golang {hl_lines=["2-4", 10]}
+```golang {hl_lines=["2-4", 10],linenos=inline,anchorlinenos=true,lineanchors="done-channel-main"}
 func main() {
 	// create the channel and pass it to application
 	done := make(chan struct{})
@@ -286,8 +296,124 @@ application done.
 
 We can see that `application done.` is being logged. This means that our application finished its work before termination.
 
+## Bonus: Force quit
 
-# Replacing done channel
+Now the application can terminate gracefully. However, sometimes one might want to force the termination and not let the application finish its work. To achieve that all we need to do is to listen for the signal twice like we are doing right now. Once we receive a signal, we wait for all the go-routines to finish their work. Any further signals, however, result in immediate termination of the program by calling `os.Exit(1)`.
+
+1. Firstly, we move our signal handeling logic to a seperate function:
+
+```golang linenos=inline,anchorlinenos=true,lineanchors="force-quit-signal-handling-refactor"}
+func signalHandler() <-chan struct{} {
+	// create the channel and pass it to application
+	done := make(chan struct{})
+	go func() {
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+		s := <-sig
+		log.Printf("signalHandler: received '%s', gracefully quitting...", s)
+		close(done) // we close the channel when a signal is received
+		s = <-sig   // listen again to force quit
+		log.Printf("signalHandler: received '%s', forcefully quitting...", s)
+		os.Exit(1) // forcefully terminate the program
+	}()
+
+	return done
+}
+```
+
+Notice that the signal handler is creating the done channel since it is the calling close (basically wiriting) on the channel. The owner of any go channel should give a read-only channel to others to avoid misbehavior in the program. We are also running our signal handler in a go-routine so that we don't have to pass the WaitGroup in or even, make it so that signal handler creates and returns the WaitGroup. This way our signal handler just handles the signals and nothing more!
+
+2. Secondly, we modify the `main()` to use our newly refactored signal handler and pass the done channel to our application as before.
+
+```golang {hl_lines=["2-3", 10],linenos=inline,anchorlinenos=true,lineanchors="force-quit-signal-handling-refactor"}
+func main() {
+	// start signal handler
+	done := signalHandler()
+
+	// create a sync.WaitGroup and add 1 to it for each go-routine
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runApplication(done)
+	}()
+
+	// we wait for all the go-routines
+	wg.Wait()
+}
+```
+
+Now if we run the program and press `Ctrl^c` twice we see this output:
+
+```bash
+$ go run main.go
+doing stuff...
+doing stuff...
+^CsignalHandler: received 'interrupt', gracefully quitting...
+^CsignalHandler: received 'interrupt', forcefully quitting...
+```
+
+## Bonus: Timeout
+
+We have a fairly good and rock-solid graceful application. But it is also a good practice to set a hard deadline for the cleanup phase. If it takes too long, the application should be terminated. To implement this, we need to add a timer after the cleanup phase has been started. So we need a function that receives the done channel to make sure we are in the termination phase. Then this function should start a timer and by the time the timer sends a value on its channel, it should terminate the program.
+
+```golang {linenos=inline,anchorlinenos=true,lineanchors="force-quit-signal-handling-refactor"}
+func timeoutHandler(timeout time.Duration, done <-chan struct{}) {
+	<-done // make sure we are in termination phase
+
+	// create a timer to be able to handle timeouts
+	timer := time.NewTimer(timeout)
+	<-timer.C
+	log.Println("timeoutHandler: cleanup phase timeout reached, forcefully quitting...")
+	os.Exit(1)
+}
+```
+
+Now let's call this in main. To test our timeout we will be using 2 seconds as the duration to test it but in general, it depends on your use case.
+
+```golang {hl_lines=["13-14"],linenos=inline,anchorlinenos=true,lineanchors="force-quit-signal-handling-refactor"}
+func main() {
+	// start signal handler
+	done := signalHandler()
+
+	// create a sync.WaitGroup and add 1 to it for each go-routine
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runApplication(done)
+	}()
+
+	// run the timeoutHandler handler to have a hard time limit on cleanup phase
+	go timeoutHandler(2*time.Second, done)
+
+	// we wait for all the go-routines
+	wg.Wait()
+}
+```
+
+Notice that we are running this in a separate go-routine also so we don't block our call to `wg.Wait()`. Here is the output of this program by pressing `Ctrl^c` once.
+
+```bash
+$ go run main.go
+doing stuff...
+doing stuff...
+^Creceived 'interrupt', gracefully quitting...
+timeoutHandler: cleanup phase timeout reached, forcefully quitting...
+```
+
+Now let's change the timeout duration to 30 seconds for the remaining sections:
+
+```golang {hl_lines=["3"],linenos=inline,anchorlinenos=true,lineanchors="force-quit-signal-handling-refactor"}
+func main() {
+	// rest of the code
+	go timeoutHandler(30*time.Second, done)
+	// rest of the code
+}
+
+```
+
+# Using context.Context
 # Replacing wait groups
 # Writing tests
 # Call to action (ask readers to go and make their programs graceful)
