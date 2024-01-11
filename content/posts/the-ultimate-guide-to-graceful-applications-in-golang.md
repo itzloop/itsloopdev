@@ -362,10 +362,10 @@ func timeoutHandler(timeout time.Duration, done <-chan struct{}) {
 	<-done // make sure we are in termination phase
 
 	// create a timer to be able to handle timeouts
-	timer := time.NewTimer(timeout)
-	<-timer.C
-	log.Println("timeoutHandler: cleanup phase timeout reached, forcefully quitting...")
-	os.Exit(1)
+	time.AfterFunc(timeout, func() {
+		log.Println("timeoutHandler: cleanup phase timeout reached, forcefully quitting...")
+		os.Exit(1)
+	})
 }
 ```
 
@@ -414,6 +414,119 @@ func main() {
 ```
 
 # Using context.Context
+So far we have been using the done channel. This pattern lacks a few useful features:
+1. Proper error handling
+2. Passing values
+3. Timeouts and cancelations
+
+For this reason, we will be using the context package. The `Context` interface has `Done` method that is the same as the Done channel.
+We have to change every instance of the Done channel with the `context.Context` type. Here is the updated version of the application:
+
+```golang {hl_lines=["1", "5-9"],linenos=inline,anchorlinenos=true,lineanchors="context-application-refactor"}
+func runApplication(ctx context.Context) (err error) {
+	// cleanup logic...
+	for {
+		select {
+		case <-ctx.Done():
+			err = ctx.Err()
+			if err == context.Canceled {
+					err = nil
+			}
+	// rest of the code
+	}
+}
+```
+
+We are receiving a `context.Context` instead of the done channel and now we handle cancelation with proper error handling. 
+We are ignoring `context.Canceled` error since it. Let's change the `timeoutHandler`:
+
+
+```golang {hl_lines=["1-2"],linenos=inline,anchorlinenos=true,lineanchors="context-timeout-handling-refactor"}
+func timeoutHandler(ctx context.Context, timeout time.Duration) {
+	<-ctx.Done() // make sure we are in termination phase
+	// timeout logic
+}
+```
+
+When the context gets canceled, the timer will start, same as before, but this time by using the `context.Context`.
+Here is the updated version of the `signalHandler`:
+```golang {hl_lines=["1-2", "5"],linenos=inline,anchorlinenos=true,lineanchors="context-signal-handling-refactor"}
+func signalHandler(ctx context.Context) context.Context {
+	ctx, cancel := context.WithCancel(ctx)
+	go func() {
+		// signal setup...
+		cancel()  // instead of calling close directly we call context.CancelFunc when a signal is received
+		// force quit logic...
+	}()
+
+	return ctx
+}
+```
+
+We create a new context with the `context.WithCancel` function which gives a new context and also a `context.CancelFunc`
+That can be used to cancel the context at any point in time. The last thing left for us to do is to update our `main` function:
+```golang {hl_lines=["2", "4", "11", "18"],linenos=inline,anchorlinenos=true,lineanchors="context-main-refactor"}
+func main() {
+	ctx := context.Background()
+	// start signal handler
+	ctx = signalHandler(ctx)
+
+	// create a sync.WaitGroup and add 1 to it for each go-routine
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := runApplication(ctx)
+		if err != nil {
+				log.Printf("main: error in application: %v\n", err)
+		}
+	}()
+
+	// run the timeoutHandler handler to have a hard time limit on cleanup phase
+	go timeoutHandler(ctx, 30*time.Second)
+
+	// we wait for all the go-routines
+	wg.Wait()
+}
+```
+
+Now, we create a context using `context.Backgroud` function and pass that context to other functions.
+
 # Replacing wait groups
-# Writing tests
-# Call to action (ask readers to go and make their programs graceful)
+
+`sync.WaitGroup`s do one thing and do it well. But what if we want to propagate the errors returned from
+different parts of our application to our `main`. `sync.WaitGroup`s don't have this feature. This is where
+[errgroup](https://pkg.go.dev/golang.org/x/sync/errgroup) comes into play. The intention behind this package
+was to run multiple go-routines for a task. But it fits nicely with our purpose. This package has a `Wait`
+function just like the `sync.WaitGroup` but will return the first error that a go-routine has returned. We can
+catch this error in our `main` and handle it properly. All instances of `WaitGroup`s should be replaced with
+`errgroup`.
+
+```golang {hl_lines=["8", "10-12", "17-20"],linenos=inline,anchorlinenos=true,lineanchors="waitgroup-main-refactor"}
+func main() {
+	ctx := context.Background()
+
+	// start signal handler
+	ctx = signalHandler(ctx)
+
+	// create a group from errgroup package
+	group, ctx := errgroup.WithContext(ctx)
+
+	group.Go(func() error {
+		return runApplication(ctx)
+	})
+
+	// run the timeoutHandler handler to have a hard time limit on cleanup phase
+	go timeoutHandler(ctx, 30*time.Second)
+
+	if err := group.Wait(); err != nil {
+		log.Printf("one of the go-routines failed: %v", err)
+		os.Exit(1)
+	}
+}
+```
+
+# Conclusion
+The final code is the best way to make graceful applications. It's using all the tools that Golang has given
+us to its fullest. I have also written a [library](https://github.com/itzloop/gograce) that is just a fancier version of this article with tests.
+Feel free to check it out.
